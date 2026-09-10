@@ -1,0 +1,183 @@
+import {
+  AudioProcessor,
+  DemoMusicProvider,
+  HttpMusicProvider,
+  LocalQueueAdapter,
+  LocalStorageAdapter,
+  LocalTextProvider,
+  S3StorageAdapter,
+  SimulatedPaymentsAdapter,
+  SqsQueueAdapter,
+  StripePaymentsAdapter,
+  TokenStarsTextProvider,
+  type MusicProvider,
+  type PaymentsAdapter,
+  type QueueAdapter,
+  type StorageAdapter,
+  type TextProvider,
+} from '@loopscene/providers';
+import { getSetting, initDb } from '@loopscene/db';
+import { baseFeatures, type AppConfig, type FeatureFlags } from './config.js';
+import { resolveFromRoot } from './paths.js';
+
+export interface AppContext {
+  config: AppConfig;
+  music: MusicProvider;
+  text: TextProvider;
+  storage: StorageAdapter;
+  queue: QueueAdapter;
+  payments: PaymentsAdapter;
+  audio: AudioProcessor;
+  /** Reads the operator-editable switches on top of the static config. */
+  features(): Promise<FeatureFlags>;
+}
+
+function buildMusic(cfg: AppConfig): MusicProvider {
+  if (cfg.adapters.music === 'demo') {
+    return new DemoMusicProvider({
+      fixturesDir: resolveFromRoot(cfg.DEMO_FIXTURES_DIR ?? './assets/fixtures/audio'),
+      latencyMs: cfg.DEMO_LATENCY_MS,
+      faults: {
+        // Markers used by the fault-injection tests. They live in the brief, so
+        // the worker takes exactly the same path it would in production.
+        failOnBriefContaining: '__FAULT_FAIL__',
+        rejectOnBriefContaining: '__FAULT_REJECT__',
+        unknownOnBriefContaining: '__FAULT_UNKNOWN__',
+        hangOnBriefContaining: '__FAULT_HANG__',
+      },
+    });
+  }
+  const statusMap = JSON.parse(cfg.MUSIC_STATUS_MAP!) as {
+    pending: string[];
+    completed: string[];
+    failed: string[];
+    rejected: string[];
+  };
+  return new HttpMusicProvider({
+    providerId: cfg.MUSIC_PROVIDER_ID!,
+    baseUrl: cfg.MUSIC_BASE_URL!,
+    apiKey: cfg.MUSIC_API_KEY!,
+    model: cfg.MUSIC_MODEL!,
+    contractVersion: cfg.MUSIC_CONTRACT_VERSION!,
+    licenseVersion: cfg.MUSIC_LICENSE_VERSION!,
+    territory: 'JP',
+    allowedUses: [],
+    prohibitedUses: [],
+    submitPath: cfg.MUSIC_SUBMIT_PATH!,
+    pollPath: cfg.MUSIC_POLL_PATH!,
+    ...(cfg.MUSIC_CANCEL_PATH ? { cancelPath: cfg.MUSIC_CANCEL_PATH } : {}),
+    requestIdField: cfg.MUSIC_REQUEST_ID_FIELD!,
+    statusField: cfg.MUSIC_STATUS_FIELD!,
+    audioUrlField: cfg.MUSIC_AUDIO_URL_FIELD!,
+    statusMap,
+    ...(cfg.MUSIC_IDEMPOTENCY_HEADER ? { idempotencyHeader: cfg.MUSIC_IDEMPOTENCY_HEADER } : {}),
+    supportsInstrumentalOnly: cfg.MUSIC_SUPPORTS_INSTRUMENTAL,
+    supportsCancel: cfg.MUSIC_SUPPORTS_CANCEL,
+    supportsWebhook: cfg.MUSIC_SUPPORTS_WEBHOOK,
+    supportsStatusQuery: cfg.MUSIC_SUPPORTS_STATUS_QUERY,
+    supportedDurationsSeconds: [30],
+    supportedFormats: cfg.FEATURE_WAV_EXPORT_ENABLED ? ['mp3', 'wav'] : ['mp3'],
+    commercialDeliveryPermitted: cfg.MUSIC_COMMERCIAL_DELIVERY,
+    maxConcurrency: cfg.MUSIC_MAX_CONCURRENCY,
+    dataRegion: cfg.MUSIC_DATA_REGION,
+    costPerRequestMinor: cfg.MUSIC_COST_MINOR_PER_REQUEST,
+    billFailedRequests: cfg.MUSIC_BILL_FAILED_REQUESTS,
+    costIsEstimate: cfg.MUSIC_COST_IS_ESTIMATE,
+    timeoutMs: cfg.MUSIC_TIMEOUT_MS,
+    maxAudioBytes: cfg.MUSIC_MAX_AUDIO_BYTES,
+    allowedAudioHosts: cfg.MUSIC_ALLOWED_AUDIO_HOSTS!.split(',').map((h) => h.trim()).filter(Boolean),
+  });
+}
+
+function buildText(cfg: AppConfig): TextProvider {
+  if (cfg.adapters.text === 'local') return new LocalTextProvider();
+  return new TokenStarsTextProvider({
+    baseUrl: cfg.TOKENSTARS_BASE_URL!,
+    apiKey: cfg.TOKENSTARS_API_KEY!,
+    model: cfg.TOKENSTARS_MODEL_ID!,
+    chatPath: cfg.TOKENSTARS_CHAT_PATH!,
+    ...(cfg.TOKENSTARS_REQUEST_ID_HEADER ? { requestIdHeader: cfg.TOKENSTARS_REQUEST_ID_HEADER } : {}),
+    structuredOutputs: cfg.TOKENSTARS_STRUCTURED_OUTPUTS,
+    timeoutMs: cfg.TOKENSTARS_TIMEOUT_MS,
+    estimatedCostMinorPerRequest: cfg.TOKENSTARS_COST_MINOR_PER_REQUEST,
+  });
+}
+
+function buildStorage(cfg: AppConfig): StorageAdapter {
+  if (cfg.adapters.storage === 'local') {
+    return new LocalStorageAdapter({
+      root: resolveFromRoot(cfg.STORAGE_LOCAL_ROOT),
+      downloadBaseUrl: `${cfg.PUBLIC_API_URL}/v1/files`,
+      signingSecret: cfg.STORAGE_SIGNING_SECRET!,
+    });
+  }
+  return new S3StorageAdapter({
+    region: cfg.S3_REGION!,
+    quarantineBucket: cfg.S3_QUARANTINE_BUCKET!,
+    deliveryBucket: cfg.S3_DELIVERY_BUCKET!,
+    ...(cfg.S3_KMS_KEY_ID ? { kmsKeyId: cfg.S3_KMS_KEY_ID } : {}),
+  });
+}
+
+function buildQueue(cfg: AppConfig): QueueAdapter {
+  if (cfg.adapters.queue === 'local') {
+    return new LocalQueueAdapter({ queueName: cfg.QUEUE_NAME });
+  }
+  return new SqsQueueAdapter({ region: cfg.SQS_REGION!, queueUrl: cfg.SQS_QUEUE_URL! });
+}
+
+function buildPayments(cfg: AppConfig): PaymentsAdapter {
+  if (cfg.adapters.payments === 'simulated') {
+    return new SimulatedPaymentsAdapter({
+      signingSecret: cfg.STORAGE_SIGNING_SECRET ?? cfg.DEV_AUTH_SECRET ?? 'loopscene-dev-only',
+      checkoutBaseUrl: `${cfg.PUBLIC_WEB_URL}/checkout/simulate`,
+    });
+  }
+  return new StripePaymentsAdapter({
+    secretKey: cfg.STRIPE_SECRET_KEY!,
+    webhookSecret: cfg.STRIPE_WEBHOOK_SECRET!,
+    expectLiveMode: cfg.mode === 'production',
+  });
+}
+
+/**
+ * Builds the application context. Called once at start-up by both the API and
+ * the worker, so both processes resolve identical adapters from identical
+ * configuration.
+ */
+export function createContext(config: AppConfig): AppContext {
+  initDb({
+    connectionString: config.DATABASE_URL,
+    max: config.DATABASE_POOL_MAX,
+    ssl: config.DATABASE_SSL,
+  });
+
+  const statics = baseFeatures(config);
+
+  return {
+    config,
+    music: buildMusic(config),
+    text: buildText(config),
+    storage: buildStorage(config),
+    queue: buildQueue(config),
+    payments: buildPayments(config),
+    audio: new AudioProcessor(),
+    async features(): Promise<FeatureFlags> {
+      // Operators may only turn things OFF at runtime. Re-enabling something
+      // configuration forbids would let a database row defeat the mode rules.
+      const overrides = await getSetting<Partial<Record<keyof FeatureFlags, boolean>>>(
+        'feature_overrides',
+        {},
+      );
+      return {
+        subscriptionsEnabled: statics.subscriptionsEnabled && overrides.subscriptionsEnabled !== false,
+        freeTrialEnabled: statics.freeTrialEnabled && overrides.freeTrialEnabled !== false,
+        wavExportEnabled: statics.wavExportEnabled && overrides.wavExportEnabled !== false,
+        commercialDeliveryEnabled:
+          statics.commercialDeliveryEnabled && overrides.commercialDeliveryEnabled !== false,
+        realPaymentsEnabled: statics.realPaymentsEnabled,
+        generationEnabled: overrides.generationEnabled !== false,
+      };
+    },
+  };
+}

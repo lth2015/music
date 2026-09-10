@@ -1,0 +1,28 @@
+node_modules/
+dist/
+build/
+coverage/
+*.tsbuildinfo
+
+# real secrets never belong in the repo — only .env.example is tracked
+.env
+.env.*
+!.env.example
+
+# local object storage + generated audio fixtures
+# (the fixtures are synthesised from scripts/make-audio-fixtures.mjs — the script is
+#  the tracked source of truth, the rendered audio is a build artefact)
+var/
+storage/
+assets/fixtures/audio/
+apps/web/dist/
+.vite/
+.DS_Store
+*.log
+
+# Terraform local state and provider plugins (the lock file IS tracked)
+infra/terraform/.terraform/
+infra/terraform/*.tfstate
+infra/terraform/*.tfstate.*
+infra/terraform/*.tfvars
+!infra/terraform/*.tfvars.example

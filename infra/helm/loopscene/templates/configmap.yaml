@@ -1,0 +1,83 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "loopscene.name" . }}-config
+  labels:
+    {{- include "loopscene.labels" . | nindent 4 }}
+data:
+  # Non-sensitive configuration only. Every secret arrives through the synced
+  # Secret named by .Values.envFromSecret.
+  PUBLIC_WEB_URL: {{ .Values.config.publicWebUrl | quote }}
+  PUBLIC_API_URL: {{ .Values.config.publicApiUrl | quote }}
+  LOG_LEVEL: {{ .Values.config.logLevel | quote }}
+  HOST: "0.0.0.0"
+  PORT: {{ .Values.api.port | quote }}
+  DATABASE_SSL: "true"
+
+  AUTH_ADAPTER: "cognito"
+  COGNITO_REGION: {{ .Values.config.cognito.region | quote }}
+  COGNITO_USER_POOL_ID: {{ .Values.config.cognito.userPoolId | quote }}
+  COGNITO_APP_CLIENT_ID: {{ .Values.config.cognito.appClientId | quote }}
+
+  STORAGE_ADAPTER: "s3"
+  S3_REGION: {{ .Values.config.cognito.region | quote }}
+  S3_QUARANTINE_BUCKET: {{ .Values.config.storage.quarantineBucket | quote }}
+  S3_DELIVERY_BUCKET: {{ .Values.config.storage.deliveryBucket | quote }}
+  S3_KMS_KEY_ID: {{ .Values.config.storage.kmsKeyId | quote }}
+  DOWNLOAD_URL_TTL_SECONDS: {{ .Values.config.storage.downloadUrlTtlSeconds | quote }}
+
+  QUEUE_ADAPTER: "sqs"
+  SQS_REGION: {{ .Values.config.queue.region | quote }}
+  SQS_QUEUE_URL: {{ .Values.config.queue.url | quote }}
+
+  TEXT_ADAPTER: "tokenstars"
+  TOKENSTARS_BASE_URL: {{ .Values.config.tokenstars.baseUrl | quote }}
+  TOKENSTARS_MODEL_ID: {{ .Values.config.tokenstars.modelId | quote }}
+  TOKENSTARS_CHAT_PATH: {{ .Values.config.tokenstars.chatPath | quote }}
+  TOKENSTARS_REQUEST_ID_HEADER: {{ .Values.config.tokenstars.requestIdHeader | quote }}
+  TOKENSTARS_STRUCTURED_OUTPUTS: {{ .Values.config.tokenstars.structuredOutputs | quote }}
+
+  MUSIC_ADAPTER: "http"
+  MUSIC_PROVIDER_ID: {{ .Values.config.music.providerId | quote }}
+  MUSIC_BASE_URL: {{ .Values.config.music.baseUrl | quote }}
+  MUSIC_MODEL: {{ .Values.config.music.model | quote }}
+  MUSIC_CONTRACT_VERSION: {{ .Values.config.music.contractVersion | quote }}
+  MUSIC_LICENSE_VERSION: {{ .Values.config.music.licenseVersion | quote }}
+  MUSIC_SUBMIT_PATH: {{ .Values.config.music.submitPath | quote }}
+  MUSIC_POLL_PATH: {{ .Values.config.music.pollPath | quote }}
+  MUSIC_CANCEL_PATH: {{ .Values.config.music.cancelPath | quote }}
+  MUSIC_REQUEST_ID_FIELD: {{ .Values.config.music.requestIdField | quote }}
+  MUSIC_STATUS_FIELD: {{ .Values.config.music.statusField | quote }}
+  MUSIC_AUDIO_URL_FIELD: {{ .Values.config.music.audioUrlField | quote }}
+  MUSIC_STATUS_MAP: {{ .Values.config.music.statusMap | quote }}
+  MUSIC_IDEMPOTENCY_HEADER: {{ .Values.config.music.idempotencyHeader | quote }}
+  MUSIC_ALLOWED_AUDIO_HOSTS: {{ .Values.config.music.allowedAudioHosts | quote }}
+  MUSIC_SUPPORTS_INSTRUMENTAL: {{ .Values.config.music.supportsInstrumental | quote }}
+  MUSIC_SUPPORTS_CANCEL: {{ .Values.config.music.supportsCancel | quote }}
+  MUSIC_SUPPORTS_WEBHOOK: {{ .Values.config.music.supportsWebhook | quote }}
+  MUSIC_SUPPORTS_STATUS_QUERY: {{ .Values.config.music.supportsStatusQuery | quote }}
+  MUSIC_COMMERCIAL_DELIVERY: {{ .Values.config.music.commercialDelivery | quote }}
+  MUSIC_DATA_REGION: {{ .Values.config.music.dataRegion | quote }}
+  MUSIC_COST_MINOR_PER_REQUEST: {{ .Values.config.music.costMinorPerRequest | quote }}
+  MUSIC_BILL_FAILED_REQUESTS: {{ .Values.config.music.billFailedRequests | quote }}
+  MUSIC_COST_IS_ESTIMATE: {{ .Values.config.music.costIsEstimate | quote }}
+
+  PAYMENTS_ADAPTER: "stripe"
+  STRIPE_PUBLISHABLE_KEY: {{ .Values.config.stripe.publishableKey | quote }}
+  STRIPE_PRICE_ID_DROP_5: {{ .Values.config.stripe.priceIdDrop5 | quote }}
+  STRIPE_PRICE_ID_CREATOR_MONTHLY: {{ .Values.config.stripe.priceIdCreatorMonthly | quote }}
+
+  FEATURE_SUBSCRIPTIONS_ENABLED: {{ .Values.config.features.subscriptionsEnabled | quote }}
+  FEATURE_FREE_TRIAL_ENABLED: {{ .Values.config.features.freeTrialEnabled | quote }}
+  FEATURE_WAV_EXPORT_ENABLED: {{ .Values.config.features.wavExportEnabled | quote }}
+
+  MAX_CONCURRENT_JOBS_PER_USER: {{ .Values.config.limits.maxConcurrentJobsPerUser | quote }}
+  DAILY_BUDGET_MINOR: {{ .Values.config.limits.dailyBudgetMinor | quote }}
+  GENERATION_RATE_LIMIT_PER_HOUR: {{ .Values.config.limits.generationRateLimitPerHour | quote }}
+  EXPORT_RATE_LIMIT_PER_HOUR: {{ .Values.config.limits.exportRateLimitPerHour | quote }}
+
+  LEGAL_ENTITY_NAME: {{ .Values.config.legal.entityName | quote }}
+  LEGAL_ENTITY_REPRESENTATIVE: {{ .Values.config.legal.representative | quote }}
+  LEGAL_ENTITY_ADDRESS: {{ .Values.config.legal.address | quote }}
+  LEGAL_ENTITY_CONTACT: {{ .Values.config.legal.contact | quote }}
+  LEGAL_ENTITY_PHONE: {{ .Values.config.legal.phone | quote }}

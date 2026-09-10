@@ -1,0 +1,40 @@
+{
+  "name": "loopscene",
+  "version": "0.1.0",
+  "private": true,
+  "description": "LOOPSCENE — TokenStars music platform MVP (30s instrumental scoring for JP short-video creators)",
+  "packageManager": "pnpm@11.1.2",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "type": "module",
+  "scripts": {
+    "build": "pnpm -r --filter \"./packages/**\" build && pnpm -r --filter \"./apps/**\" build",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "pnpm -r lint",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "dev": "concurrently -n api,worker,web -c green,magenta,cyan \"pnpm dev:api\" \"pnpm dev:worker\" \"pnpm dev:web\"",
+    "dev:api": "pnpm --filter @loopscene/api dev",
+    "dev:worker": "pnpm --filter @loopscene/worker dev",
+    "dev:web": "pnpm --filter @loopscene/web dev",
+    "db:up": "docker compose up -d mysql mysql-test",
+    "db:down": "docker compose down",
+    "db:migrate": "pnpm --filter @loopscene/db migrate",
+    "db:reset": "pnpm --filter @loopscene/db reset",
+    "seed": "pnpm --filter @loopscene/api seed",
+    "fixtures:audio": "node scripts/make-audio-fixtures.mjs",
+    "bootstrap": "pnpm install && pnpm fixtures:audio && pnpm db:up && node scripts/wait-for-db.mjs && pnpm db:migrate && pnpm seed"
+  },
+  "devDependencies": {
+    "@loopscene/api": "workspace:*",
+    "@loopscene/contracts": "workspace:*",
+    "@loopscene/db": "workspace:*",
+    "@loopscene/providers": "workspace:*",
+    "@loopscene/worker": "workspace:*",
+    "@types/node": "^22.10.2",
+    "concurrently": "^9.1.0",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

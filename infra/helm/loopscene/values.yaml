@@ -1,0 +1,174 @@
+# LOOPSCENE Helm values.
+#
+# Secrets are never set here. `envFromSecret` names a Kubernetes Secret that the
+# External Secrets Operator (or an equivalent) syncs from AWS Secrets Manager,
+# so no credential is stored in the chart, in git, or in Helm release history.
+
+nameOverride: ""
+runMode: production
+
+image:
+  registry: ""
+  # Images are pinned by digest, not by tag: an immutable reference is what
+  # makes a rollback deterministic (§4.2 "镜像固定摘要").
+  api:
+    repository: loopscene-api
+    digest: ""
+  worker:
+    repository: loopscene-worker
+    digest: ""
+  pullPolicy: IfNotPresent
+
+serviceAccount:
+  api:
+    name: loopscene-api
+    # eks.amazonaws.com/role-arn, from the Terraform output.
+    roleArn: ""
+  worker:
+    name: loopscene-worker
+    roleArn: ""
+
+# Name of the synced Kubernetes Secret holding DATABASE_URL, STRIPE_SECRET_KEY,
+# STRIPE_WEBHOOK_SECRET, TOKENSTARS_API_KEY and MUSIC_API_KEY.
+envFromSecret: loopscene-runtime
+
+api:
+  # §4.2: at least two replicas across two availability zones in production.
+  replicaCount: 2
+  port: 4000
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      memory: 1Gi
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 8
+    targetCPUUtilizationPercentage: 65
+
+worker:
+  replicaCount: 1
+  resources:
+    requests:
+      # ffmpeg is CPU-bound; under-requesting here shows up as slow deliveries.
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      memory: 1536Mi
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    # §12.3: the real ceiling is the provider's concurrency quota and the daily
+    # budget, not this number. Raising it does not buy more upstream capacity.
+    maxReplicas: 4
+    targetCPUUtilizationPercentage: 70
+  nodeSelector:
+    workload: worker
+  tolerations:
+    - key: workload
+      operator: Equal
+      value: worker
+      effect: NoSchedule
+
+# Runs `db:migrate` as a pre-upgrade hook so the schema is in place before any
+# new pod starts. Production API pods do not migrate on boot.
+migrations:
+  enabled: true
+
+ingress:
+  enabled: true
+  className: alb
+  host: ""
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
+    alb.ingress.kubernetes.io/ssl-redirect: "443"
+    alb.ingress.kubernetes.io/healthcheck-path: /health
+    # The ALB is an entry point, not a place to wait for audio: clients receive
+    # a job id and poll (§4.2).
+    alb.ingress.kubernetes.io/load-balancer-attributes: idle_timeout.timeout_seconds=60
+  certificateArn: ""
+
+config:
+  publicWebUrl: ""
+  publicApiUrl: ""
+  logLevel: info
+
+  cognito:
+    region: ap-northeast-1
+    userPoolId: ""
+    appClientId: ""
+
+  storage:
+    quarantineBucket: ""
+    deliveryBucket: ""
+    kmsKeyId: ""
+    downloadUrlTtlSeconds: "300"
+
+  queue:
+    region: ap-northeast-1
+    url: ""
+
+  tokenstars:
+    baseUrl: ""
+    modelId: ""
+    chatPath: ""
+    requestIdHeader: ""
+    structuredOutputs: "false"
+
+  music:
+    providerId: ""
+    baseUrl: ""
+    model: ""
+    contractVersion: ""
+    licenseVersion: ""
+    submitPath: ""
+    pollPath: ""
+    cancelPath: ""
+    requestIdField: ""
+    statusField: ""
+    audioUrlField: ""
+    statusMap: '{"pending":[],"completed":[],"failed":[],"rejected":[]}'
+    idempotencyHeader: ""
+    allowedAudioHosts: ""
+    supportsInstrumental: "false"
+    supportsCancel: "false"
+    supportsWebhook: "false"
+    supportsStatusQuery: "true"
+    # Stays false until a signed agreement covers delivering output (SEC-09).
+    commercialDelivery: "false"
+    dataRegion: unconfirmed
+    costMinorPerRequest: "45"
+    billFailedRequests: "true"
+    costIsEstimate: "true"
+
+  stripe:
+    publishableKey: ""
+    priceIdDrop5: ""
+    priceIdCreatorMonthly: ""
+
+  features:
+    subscriptionsEnabled: "false"
+    freeTrialEnabled: "false"
+    wavExportEnabled: "false"
+
+  limits:
+    maxConcurrentJobsPerUser: "2"
+    dailyBudgetMinor: "50000"
+    generationRateLimitPerHour: "30"
+    exportRateLimitPerHour: "60"
+
+  # SEC-13: production refuses to start if these are empty.
+  legal:
+    entityName: ""
+    representative: ""
+    address: ""
+    contact: ""
+    phone: ""
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1

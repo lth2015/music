@@ -1,0 +1,39 @@
+{
+  "name": "@loopscene/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/lib.js",
+  "types": "./dist/lib.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/lib.d.ts",
+      "default": "./dist/lib.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "seed": "tsx src/seed.ts",
+    "openapi": "tsx src/openapi/emit.ts"
+  },
+  "dependencies": {
+    "@fastify/cors": "^10.0.1",
+    "@fastify/rate-limit": "^10.2.1",
+    "@fastify/sensible": "^6.0.2",
+    "@loopscene/contracts": "workspace:*",
+    "@loopscene/db": "workspace:*",
+    "@loopscene/providers": "workspace:*",
+    "fastify": "^5.2.0",
+    "fastify-plugin": "^6.0.0",
+    "jose": "^5.9.6",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

@@ -1,0 +1,110 @@
+import type { ErrorCode } from '@loopscene/contracts';
+
+const API_BASE = import.meta.env['VITE_API_URL'] ?? 'http://localhost:4000';
+const TOKEN_KEY = 'loopscene.token';
+
+export class ApiError extends Error {
+  readonly code: ErrorCode;
+  readonly status: number;
+  readonly details: unknown;
+
+  constructor(code: ErrorCode, message: string, status: number, details?: unknown) {
+    super(message);
+    this.name = 'ApiError';
+    this.code = code;
+    this.status = status;
+    this.details = details;
+  }
+}
+
+/** Raised when the browser could not reach the API at all (UI-12: network loss). */
+export class NetworkError extends Error {
+  constructor(cause: unknown) {
+    super('network unreachable');
+    this.name = 'NetworkError';
+    this.cause = cause;
+  }
+}
+
+export function getToken(): string | null {
+  try {
+    return localStorage.getItem(TOKEN_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function setToken(token: string | null): void {
+  try {
+    if (token) localStorage.setItem(TOKEN_KEY, token);
+    else localStorage.removeItem(TOKEN_KEY);
+  } catch {
+    /* private browsing: the session simply does not persist */
+  }
+}
+
+export interface RequestOptions {
+  method?: 'GET' | 'POST' | 'PATCH' | 'DELETE';
+  body?: unknown;
+  idempotencyKey?: string;
+  signal?: AbortSignal;
+}
+
+export async function apiFetch<T>(path: string, opts: RequestOptions = {}): Promise<T> {
+  const headers: Record<string, string> = {};
+  const token = getToken();
+  if (token) headers['authorization'] = `Bearer ${token}`;
+  if (opts.body !== undefined) headers['content-type'] = 'application/json';
+  if (opts.idempotencyKey) headers['idempotency-key'] = opts.idempotencyKey;
+
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}${path}`, {
+      method: opts.method ?? 'GET',
+      headers,
+      body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
+      ...(opts.signal ? { signal: opts.signal } : {}),
+    });
+  } catch (err) {
+    if ((err as Error).name === 'AbortError') throw err;
+    throw new NetworkError(err);
+  }
+
+  if (res.status === 204) return undefined as T;
+
+  const text = await res.text();
+  let json: unknown = null;
+  try {
+    json = text ? JSON.parse(text) : null;
+  } catch {
+    json = null;
+  }
+
+  if (!res.ok) {
+    const body = json as { error?: { code?: ErrorCode; message?: string; details?: unknown } } | null;
+    const code = body?.error?.code ?? 'INTERNAL_ERROR';
+    // An expired or revoked session drops the stale token so the UI can
+    // re-prompt instead of looping on 401s.
+    if (res.status === 401) setToken(null);
+    throw new ApiError(code, body?.error?.message ?? res.statusText, res.status, body?.error?.details);
+  }
+
+  return json as T;
+}
+
+/**
+ * A per-attempt idempotency key.
+ *
+ * Generated once when the user opens the create form and reused for every retry
+ * of that same submission, so a double tap or a flaky network cannot produce two
+ * jobs or two charges (GEN-01).
+ */
+export function newIdempotencyKey(prefix = 'gen'): string {
+  const random =
+    typeof crypto !== 'undefined' && 'randomUUID' in crypto
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return `${prefix}-${random}`.slice(0, 128);
+}
+
+export { API_BASE };

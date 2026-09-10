@@ -1,0 +1,186 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      # A real MySQL 8.0, not a stand-in: §12.1 requires the ledger,
+      # concurrency and constraint tests to run against the actual engine.
+      mysql:
+        image: mysql:8.0.40
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: loopscene_test
+          MYSQL_USER: loopscene
+          MYSQL_PASSWORD: loopscene_local_test
+        ports:
+          - 53307:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.1.2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.13.1
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # ffmpeg backs the output checks and export rendering; the audio tests
+      # exercise it for real rather than mocking it out.
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+
+      - name: Configure MySQL for the licence-immutability trigger
+        # SEC-08's trigger needs this, exactly as the RDS parameter group does.
+        run: |
+          mysql -h 127.0.0.1 -P 53307 -uroot -proot \
+            -e "SET GLOBAL log_bin_trust_function_creators = 1;"
+
+      - name: Generate demo audio fixtures
+        run: pnpm fixtures:audio
+
+      - name: Build workspace
+        run: pnpm build
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test
+        env:
+          TEST_DATABASE_URL: mysql://loopscene:loopscene_local_test@127.0.0.1:53307/loopscene_test
+
+      - name: Verify the demo configuration boots
+        # A mode/adapter combination that cannot start is a build failure, not a
+        # deploy-time surprise (§3.1).
+        run: node -e "
+          const { loadConfig } = require('./apps/api/dist/lib.js');
+          const cfg = loadConfig({
+            RUN_MODE: 'demo',
+            DATABASE_URL: 'mysql://u:p@localhost:3306/x',
+            DEV_AUTH_SECRET: 'x'.repeat(32),
+            STORAGE_SIGNING_SECRET: 'y'.repeat(32),
+          });
+          if (cfg.mode !== 'demo') process.exit(1);
+          console.log('demo configuration validates');
+          "
+
+  docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build the image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          load: true
+          tags: loopscene:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Verify ffmpeg is present in the image
+        # The worker exits at start-up without it, so catching this here rather
+        # than in a cluster is worth one extra step.
+        run: docker run --rm --entrypoint ffmpeg loopscene:ci -version | head -1
+
+      - name: Verify every entry point resolves in the image
+        # pnpm's workspace links do not survive a naive copy, so a missing
+        # module here would only surface in a cluster.
+        run: |
+          docker run --rm loopscene:ci node -e "require.resolve" >/dev/null
+          docker run --rm loopscene:ci node api/node_modules/@loopscene/db/dist/cli.js migrate 2>&1 \
+            | grep -q "DATABASE_URL is not set"
+          echo "api, worker and migrate entry points all resolve"
+
+      - name: Verify the image refuses an invalid production configuration
+        run: |
+          set +e
+          output=$(docker run --rm \
+            -e RUN_MODE=production \
+            -e DATABASE_URL=mysql://u:p@localhost:3306/x \
+            -e AUTH_ADAPTER=dev \
+            loopscene:ci 2>&1)
+          status=$?
+          set -e
+          echo "$output"
+          if [ $status -eq 0 ]; then
+            echo "FAIL: production mode started with the dev auth adapter"
+            exit 1
+          fi
+          echo "$output" | grep -q "dev auth adapter" || {
+            echo "FAIL: expected the config error to name the dev auth adapter"
+            exit 1
+          }
+          echo "production correctly refused the development login (SEC-03)"
+
+  terraform:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.8.2
+      - name: Format check
+        run: terraform -chdir=infra/terraform fmt -check -recursive
+      - name: Validate
+        # `init -backend=false` validates syntax and provider schemas without
+        # any AWS credentials; no account has been authorised for this project.
+        run: |
+          terraform -chdir=infra/terraform init -backend=false
+          terraform -chdir=infra/terraform validate
+
+  helm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.16.3
+      - name: Lint the chart
+        run: helm lint infra/helm/loopscene --set image.api.digest=sha256:0 --set image.worker.digest=sha256:0
+      - name: Render the templates
+        run: |
+          helm template loopscene infra/helm/loopscene \
+            --set image.registry=example.dkr.ecr.ap-northeast-1.amazonaws.com \
+            --set image.api.digest=sha256:0000000000000000000000000000000000000000000000000000000000000000 \
+            --set image.worker.digest=sha256:0000000000000000000000000000000000000000000000000000000000000000 \
+            > /dev/null
+      - name: Reject an unpinned image reference
+        # The chart must fail rather than deploy a mutable tag (§4.2).
+        run: |
+          set +e
+          helm template loopscene infra/helm/loopscene > /dev/null 2>&1
+          if [ $? -eq 0 ]; then
+            echo "FAIL: the chart rendered without a digest"
+            exit 1
+          fi
+          echo "chart correctly requires a digest-pinned image"

@@ -1,0 +1,61 @@
+services:
+  mysql:
+    # 8.0 is the floor: SKIP LOCKED, enforced CHECK constraints and stored
+    # generated columns are all load-bearing for the credit ledger.
+    image: mysql:8.0.40
+    container_name: loopscene-mysql
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+      # Everything is stored in UTC; JST is presentation only (§10).
+      - --default-time-zone=+00:00
+      - --sql-mode=STRICT_TRANS_TABLES,NO_ENGINE_SUBSTITUTION,ERROR_FOR_DIVISION_BY_ZERO
+      - --innodb-lock-wait-timeout=10
+      # Required to create the license_snapshots immutability trigger without
+      # SUPER. On RDS/Aurora set the same value in the DB parameter group —
+      # see docs/OPERATIONS.md.
+      - --log-bin-trust-function-creators=1
+    environment:
+      MYSQL_ROOT_PASSWORD: loopscene_root_local
+      MYSQL_DATABASE: loopscene_dev
+      MYSQL_USER: loopscene
+      MYSQL_PASSWORD: loopscene_local_dev
+    ports:
+      - "53306:3306"
+    volumes:
+      - loopscene-mysqldata:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uloopscene", "-ploopscene_local_dev"]
+      interval: 3s
+      timeout: 5s
+      retries: 30
+
+  # Separate database for the test suite, so running tests never touches the
+  # data you were clicking through in the browser.
+  mysql-test:
+    image: mysql:8.0.40
+    container_name: loopscene-mysql-test
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+      - --default-time-zone=+00:00
+      - --sql-mode=STRICT_TRANS_TABLES,NO_ENGINE_SUBSTITUTION,ERROR_FOR_DIVISION_BY_ZERO
+      - --innodb-lock-wait-timeout=10
+      - --log-bin-trust-function-creators=1
+    environment:
+      MYSQL_ROOT_PASSWORD: loopscene_root_test
+      MYSQL_DATABASE: loopscene_test
+      MYSQL_USER: loopscene
+      MYSQL_PASSWORD: loopscene_local_test
+    ports:
+      - "53307:3306"
+    tmpfs:
+      - /var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uloopscene", "-ploopscene_local_test"]
+      interval: 3s
+      timeout: 5s
+      retries: 30
+
+volumes:
+  loopscene-mysqldata:
