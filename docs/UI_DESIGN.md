@@ -42,17 +42,56 @@ Facts read from the live page's computed styles, not impressions:
    single action — no hamburger — the headline stays huge (~44px), and the
    composer's chips become icon-only while Create keeps its label.
 
-A fifth, cosmetic but effective: **tilted, floating track cards** at the hero
-edges showing real output with a play overlay. It demonstrates the product
-instead of describing it.
+A fifth is effective but **not ours to take** — see §2.1: tilted, floating track
+cards flanking the headline. It solves a real problem (demonstrate the output
+instead of describing it), and we need to solve that problem too, in our own
+vocabulary.
 
 ---
 
-## 2. What we deliberately do not copy
+## 2. The line between borrowing and copying
 
-Suno is a different product with a different licence position. Copying its
-information architecture would put us outside our own scope and, in two cases,
-outside our acceptance criteria.
+Two separate questions, and they need separate answers.
+
+### 2.1 Visual: convention or signature?
+
+The test applied to every item in this document:
+
+> **Convention** — many products arrived at it independently because it solves a
+> problem. Using it is participating in a shared vocabulary.
+> **Signature** — a specific expression that makes *this* product recognisable.
+> Taking it means looking like a clone, whether or not it is legally protected.
+
+| Borrowed item | Verdict | Reasoning |
+| --- | --- | --- |
+| Display type at weight 500, tight leading, negative tracking | **Convention** | The prevailing contemporary style across Linear, Stripe, Vercel, Arc and many others. Suno is one instance of it, not its origin. |
+| Pill buttons and chips | **Convention** | Universal. |
+| Translucent white surfaces (`rgba(255,255,255,0.05)`) | **Convention** | The standard way to build hierarchy on a dark ground without inventing new greys. |
+| A radius scale by role rather than one radius | **Convention** | Ordinary design-system practice. |
+| One saturated element per screen | **Convention** | Basic visual hierarchy, taught rather than invented. |
+| Input as the hero | **Convention** — and independently required of us | ChatGPT, Perplexity, Midjourney, v0 and others use it. More to the point, UI-01 already asks for it: preview without an account, sign in only at generation. We would arrive here with no competitor to look at. |
+| Mobile collapsing to a single action | **Convention** | Functional response to a narrow viewport. |
+| Ambient gradient mesh + grain | **Convention, but the palette is the signature** | The technique is everywhere. Suno's *warm* orange→magenta is theirs. Ours is cool violet/lime because our palette is spec-locked — see §3.4. |
+| **Tilted floating cards flanking the headline** | **Signature — rejected** | The specific arrangement is distinctively Suno's. Reproducing it would make us read as a derivative, which is a product problem before it is a legal one. Replaced in §4.3. |
+| Gradient on the primary action | **Convention, recoloured** | Gradient CTAs are ordinary. Suno's is orange→pink; ours is lime→violet from our own tokens. |
+
+**Where we end up anyway.** Our palette is cool graphite with lime and violet;
+theirs is warm orange and magenta. Our type is Japanese-first Noto Sans JP;
+theirs is a Latin display face. Our input is four fixed scene templates; theirs
+is an open chat box. Our output is one 30-second instrumental; theirs is two
+full songs with vocals. We have no feed. Someone who knows Suno will not mistake
+the result for it — and if at any point they would, that is the signal that a
+borrowing went too far.
+
+One thing I am not qualified to rule on: whether any specific visual arrangement
+is legally protectable as trade dress. If that question ever becomes live — for
+example if marketing wants a side-by-side comparison — it needs a lawyer, not
+this document.
+
+### 2.2 Model: what is out of scope for us regardless
+
+Separate from aesthetics. Copying Suno's information architecture would put us
+outside our own scope and, in two cases, outside our acceptance criteria.
 
 | Suno pattern | Why not |
 | --- | --- |
@@ -224,16 +263,48 @@ The meta line under the composer carries what UI-03 requires before submission:
 cost of this run, real remaining balance, fixed duration, instrumental-only.
 Suno hides its credit cost behind an icon; we do not.
 
-### 4.3 Sample cards
+### 4.3 Sample cards — the 30-second ruler
 
-Adopt the tilted floating treatment for the landing samples — `rotate(-4deg)`
-and `rotate(3deg)` on the outer two at ≥1024px, flat and stacked below that.
+The problem Suno solves with tilted flanking cards is real: **show the output,
+do not describe it.** We need to solve it. We should not solve it their way
+(§2.1).
 
-Two rules the borrowed pattern must obey:
+Our own answer comes from the constraint that defines this product and does not
+exist in Suno's: **every track is exactly 30 seconds.** So the recurring motif
+is a 0–30s ruler.
 
-- `prefers-reduced-motion` removes the tilt, not just the animation;
-- the provenance note (`GET /v1/samples` → `provenance`) stays visible next to
-  them. UI-01 requires a lawful-source record, and a decorative treatment does
+```
+夜の散歩 / 静けさ
+┌────────────────────────────────────────────┐
+│ ▶   │────────────────╎───────────────────│ │
+└────────────────────────────────────────────┘
+      0s              15s                 30s
+                       ↑
+              the 15s export point, marked
+```
+
+A thin baseline with tick marks at 0 / 15 / 30, the played portion filled in
+`--accent`, and the 15s point marked because that is the *other* export length a
+user can choose. The same motif carries across three places:
+
+- **sample cards** on the landing page — flat, in-grid, no tilt;
+- **the player scrubber** — the ruler is the scrubber;
+- **the export trimmer** — the 15s window is a bracket that slides along the
+  same ruler.
+
+That earns its place three times instead of decorating once, it teaches the
+15s/30s choice before the user reaches the export screen, and it is meaningless
+to a product without a fixed duration — which is exactly what makes it ours.
+
+Important: the ruler shows **time**, never amplitude. We have no peak data, and
+drawing a waveform-shaped bar would be a fabricated picture of audio nobody has
+analysed. Ticks and a fill, nothing more.
+
+Two rules regardless of treatment:
+
+- `prefers-reduced-motion` removes the fill animation;
+- the provenance note (`GET /v1/samples` → `provenance`) stays visible beside
+  the samples. UI-01 requires a lawful-source record, and a nicer visual does
   not earn the right to bury it.
 
 ### 4.4 Generation progress (UI-04)
@@ -252,9 +323,8 @@ precise figure, and the honest time range stays.
 ### 4.5 Player
 
 The current single-shared-audio player is correct and stays. Visual changes
-only: pill transport button at 44px, waveform-style scrubber (a static
-pre-rendered bar pattern, not a real waveform — we do not have peak data and
-faking it per-track would be a lie about the audio), tabular-numeric time.
+only: pill transport button at 44px, the §4.3 ruler as the scrubber, and
+tabular-numeric time.
 
 ### 4.6 Mobile (≤767px)
 
@@ -324,7 +394,7 @@ Roughly ascending risk. Each step is independently shippable.
 | 4 | **Measure contrast**, adjust `--text-muted` if it fails | `styles.css` | Low, blocking |
 | 5 | Progress and player refinements | `common.tsx` | Low |
 | 6 | Mobile bottom tab bar | `Layout.tsx` | Medium |
-| 7 | Tilted sample cards | `Home.tsx` | Medium |
+| 7 | 30s ruler motif (samples, scrubber, trimmer) | `common.tsx`, `Home.tsx`, `Export.tsx` | Medium |
 | 8 | **Composer on the landing page** | `Home.tsx`, `Create.tsx` | **High** |
 
 Step 8 is the valuable one and the one that can break things: it moves the
