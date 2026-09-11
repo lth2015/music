@@ -189,6 +189,7 @@ alerts, rollback and recovery.
 | Document | Contents |
 | --- | --- |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Modules, data flow, state machine, schema, design trade-offs |
+| [`docs/UI_DESIGN.md`](docs/UI_DESIGN.md) | Design system and direction, with the competitive review behind it |
 | [`docs/API.md`](docs/API.md) | Endpoints, error codes, idempotency rules |
 | [`docs/OPERATIONS.md`](docs/OPERATIONS.md) | Deploy, refund, compensate, reconcile, alert, roll back, recover |
 | [`docs/ACCEPTANCE.md`](docs/ACCEPTANCE.md) | Every UI/GEN/PAY/AI/SEC item with a result and evidence |
